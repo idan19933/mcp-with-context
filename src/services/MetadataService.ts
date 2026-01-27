@@ -120,6 +120,11 @@ export class MetadataService {
       const attributes: AttributeMetadata[] = [];
       const rawAttributes = (response['attributes'] ?? response['_results'] ?? []) as Array<Record<string, unknown>>;
 
+      // Debug: log first attribute to see structure
+      if (rawAttributes.length > 0) {
+        console.log(`[MetadataService] Sample attribute keys:`, Object.keys(rawAttributes[0] ?? {}));
+      }
+
       for (const attr of rawAttributes) {
         const dataType = String(attr['dataType'] ?? 'STRING');
         
@@ -127,9 +132,30 @@ export class MetadataService {
           continue;
         }
 
+        // Clarity API returns 'name' for the API name, not 'attributeName'
+        const apiName = String(
+          attr['name'] ?? 
+          attr['attributeName'] ?? 
+          attr['apiName'] ?? 
+          attr['code'] ?? 
+          ''
+        );
+        
+        const displayName = String(
+          attr['displayName'] ?? 
+          attr['label'] ?? 
+          attr['name'] ?? 
+          ''
+        );
+
+        // Skip if no apiName
+        if (!apiName) {
+          continue;
+        }
+
         attributes.push({
-          apiName: String(attr['attributeName'] ?? attr['apiName'] ?? ''),
-          displayName: String(attr['displayName'] ?? attr['label'] ?? attr['attributeName'] ?? ''),
+          apiName,
+          displayName: displayName || apiName,
           dataType,
           isRequired: Boolean(attr['isRequired']),
           isReadOnly: Boolean(attr['isReadOnly']),
@@ -151,6 +177,8 @@ export class MetadataService {
 
       this.metadataCache.set(objectType, metadata);
       this.objectLabelsCache.set(objectType, metadata.label);
+
+      console.log(`[MetadataService] Loaded ${attributes.length} attributes for ${objectType}`);
 
       return metadata;
     } catch (error) {
