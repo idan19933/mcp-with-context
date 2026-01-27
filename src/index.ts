@@ -146,7 +146,8 @@ app.get('/api/objects/:objectType/metadata', async (req, res) => {
 // Proxy to Clarity API
 app.get('/api/clarity/*', async (req, res) => {
   try {
-    const endpoint = '/' + req.params[0];
+    const wildcardParam = (req.params as Record<string, string>)['0'] ?? '';
+    const endpoint = '/' + wildcardParam;
     const queryString = new URLSearchParams(req.query as Record<string, string>).toString();
     const fullEndpoint = queryString ? `${endpoint}?${queryString}` : endpoint;
     
@@ -161,7 +162,8 @@ app.get('/api/clarity/*', async (req, res) => {
 
 app.post('/api/clarity/*', async (req, res) => {
   try {
-    const endpoint = '/' + req.params[0];
+    const wildcardParam = (req.params as Record<string, string>)['0'] ?? '';
+    const endpoint = '/' + wildcardParam;
     const services = getServices();
     const data = await services.clarityClient.post(endpoint, req.body);
     res.json(data);
