@@ -486,7 +486,7 @@ export class AIChatHandler {
   // DETECT TARGET OBJECT FROM MESSAGE
   // ============================================================================
 
-  private async detectTargetObject(message: string): Promise<{ objectType: string; label: string } | null> {
+  private async detectTargetObject(message: string, sessionId: string = 'default'): Promise<{ objectType: string; label: string } | null> {
     const lowerMessage = message.toLowerCase();
     const customObjects = await this.metadataService.getCustomObjects();
     
@@ -509,8 +509,49 @@ export class AIChatHandler {
       }
     }
     
-    // Default to projects if no match
+    // Check for context-based references like "the object", "this", "it", "האובייקט", "עליו"
+    const contextTriggers = [
+      'the object', 'this object', 'that object', 'it', 'this', 'האובייקט', 
+      'עליו', 'אותו', 'הזה', 'עוד נתונים', 'more data', 'more info', 'עוד מידע',
+      'describe', 'fields', 'שדות', 'תאר'
+    ];
+    
+    const hasContextReference = contextTriggers.some(trigger => lowerMessage.includes(trigger));
+    
+    // If message seems to reference previous context OR no object found, use last queried object
+    if (hasContextReference || !this.hasObjectMention(lowerMessage, customObjects)) {
+      const context = this.contextService.getContext(sessionId);
+      if (context.lastQuery?.objectType && context.lastQuery?.objectLabel) {
+        console.log(`[AI] Using context object: ${context.lastQuery.objectLabel} (${context.lastQuery.objectType})`);
+        return { 
+          objectType: context.lastQuery.objectType, 
+          label: context.lastQuery.objectLabel 
+        };
+      }
+    }
+    
+    // Default to projects if no match and no context
     return { objectType: 'projects', label: 'Projects' };
+  }
+
+  // Helper to check if message mentions any object
+  private hasObjectMention(message: string, customObjects: Array<{ label: string; resourceName: string }>): boolean {
+    const standardObjects = ['projects', 'tasks', 'resources', 'ideas', 'risks', 'issues', 'timesheets', 
+                            'project', 'task', 'resource', 'idea', 'risk', 'issue', 'timesheet'];
+    
+    // Check standard objects
+    for (const obj of standardObjects) {
+      if (message.includes(obj)) return true;
+    }
+    
+    // Check custom objects
+    for (const obj of customObjects) {
+      if (message.includes(obj.label.toLowerCase()) || message.includes(obj.resourceName.toLowerCase())) {
+        return true;
+      }
+    }
+    
+    return false;
   }
 
   // ============================================================================
@@ -600,8 +641,8 @@ export class AIChatHandler {
   // ============================================================================
 
   private async getAIPlan(userMessage: string, context: ConversationContext): Promise<APIPlan> {
-    // Detect target object
-    const targetObject = await this.detectTargetObject(userMessage);
+    // Detect target object - pass sessionId for context awareness
+    const targetObject = await this.detectTargetObject(userMessage, context.sessionId);
     const objectType = targetObject?.objectType ?? 'projects';
     const objectLabel = targetObject?.label ?? 'Projects';
     
