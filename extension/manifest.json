@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Clarity AI Assistant",
+  "version": "3.1.0",
+  "description": "AI chat for Clarity PPM with Session Management, Dynamic Tools & Visual Analytics",
+  "permissions": [
+    "activeTab", 
+    "storage",
+    "cookies"
+  ],
+  "host_permissions": [
+    "http://16.16.83.171/*",
+    "https://mcpnew-production.up.railway.app/*",
+    "http://localhost:8080/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "content_scripts": [{
+    "matches": ["http://16.16.83.171/*"],
+    "js": ["content.js"],
+    "css": ["styles.css"],
+    "run_at": "document_idle"
+  }],
+  "background": { 
+    "service_worker": "background.js" 
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": { 
+      "16": "icon16.png", 
+      "48": "icon48.png", 
+      "128": "icon128.png" 
+    }
+  },
+  "icons": { 
+    "16": "icon16.png", 
+    "48": "icon48.png", 
+    "128": "icon128.png" 
+  }
+}
