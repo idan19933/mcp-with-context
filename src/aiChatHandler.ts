@@ -414,13 +414,13 @@ export class AIChatHandler {
     }
     
     // Pattern 3: "link to project X" / "link to X project" / "link to idanTest3"
-    // Extract the record name - remove known keywords
-    const linkToMatch = msg.match(/link\s+(?:to\s+)(?:project\s+)?["']?(.+?)["']?(?:\s+project)?$/i);
+    // IMPORTANT: Use originalMessage to preserve case (Clarity API is case-sensitive)
+    const linkToMatch = originalMessage.match(/link\s+(?:to\s+)(?:project\s+)?["']?(.+?)["']?(?:\s+project[r]?)?$/i);
     if (linkToMatch) {
       let recordName = linkToMatch[1]?.trim();
       
-      // Remove trailing "project" / "projectr" if present
-      recordName = recordName.replace(/\s*projects?\s*$/i, '').trim();
+      // Remove trailing "project" / "projectr" / "projects" if present
+      recordName = recordName.replace(/\s*project[rs]?\s*$/i, '').trim();
       
       // Skip generic/vague words - ask user to specify
       const GENERIC_WORDS = [
@@ -430,11 +430,13 @@ export class AIChatHandler {
       ];
       if (recordName && !GENERIC_WORDS.includes(recordName.toLowerCase())) {
         
+        const recordNameLower = recordName.toLowerCase();
+        
         // Check if it's a custom object code/name
         const customObjects = await this.metadataService.getCustomObjects();
         const customObj = customObjects.find(o => 
-          o.label.toLowerCase().includes(recordName) || 
-          o.resourceName.toLowerCase().includes(recordName)
+          o.label.toLowerCase().includes(recordNameLower) || 
+          o.resourceName.toLowerCase().includes(recordNameLower)
         );
         
         if (customObj) {
@@ -522,19 +524,54 @@ export class AIChatHandler {
       // Escape special characters for filter
       const escapedName = nameOrCode.replace(/'/g, "''");
       
-      // Try to find by code first (exact match)
+      // Strategy 1: Try exact code match (case-sensitive)
       let response = await this.client.get<Record<string, unknown>>(
         `/${objectType}?filter=((code = '${escapedName}'))&fields=_internalId,name,code&limit=1`
       );
-      
       let records = (response._results ?? []) as Array<Record<string, unknown>>;
       
+      // Strategy 2: Try exact name match
       if (records.length === 0) {
-        // Try to find by name (contains)
         response = await this.client.get<Record<string, unknown>>(
-          `/${objectType}?filter=((name contains '${escapedName}'))&fields=_internalId,name,code&limit=1`
+          `/${objectType}?filter=((name = '${escapedName}'))&fields=_internalId,name,code&limit=1`
         );
         records = (response._results ?? []) as Array<Record<string, unknown>>;
+      }
+      
+      // Strategy 3: Try name contains (partial match, case-insensitive on most DBs)
+      if (records.length === 0) {
+        response = await this.client.get<Record<string, unknown>>(
+          `/${objectType}?filter=((name contains '${escapedName}'))&fields=_internalId,name,code&limit=5`
+        );
+        records = (response._results ?? []) as Array<Record<string, unknown>>;
+        
+        // If multiple results, try to find best match
+        if (records.length > 1) {
+          const exactMatch = records.find(r => 
+            (r['name'] as string)?.toLowerCase() === nameOrCode.toLowerCase() ||
+            (r['code'] as string)?.toLowerCase() === nameOrCode.toLowerCase()
+          );
+          if (exactMatch) {
+            records = [exactMatch];
+          }
+        }
+      }
+      
+      // Strategy 4: Try code contains (for partial code matches)
+      if (records.length === 0) {
+        response = await this.client.get<Record<string, unknown>>(
+          `/${objectType}?filter=((code contains '${escapedName}'))&fields=_internalId,name,code&limit=5`
+        );
+        records = (response._results ?? []) as Array<Record<string, unknown>>;
+        
+        if (records.length > 1) {
+          const exactMatch = records.find(r => 
+            (r['code'] as string)?.toLowerCase() === nameOrCode.toLowerCase()
+          );
+          if (exactMatch) {
+            records = [exactMatch];
+          }
+        }
       }
       
       if (records.length === 0) return null;
