@@ -128,16 +128,14 @@ export class AIChatHandler {
       const lowerMessage = message.toLowerCase();
       if (lowerMessage.includes('link') && !lowerMessage.includes('create') && !lowerMessage.includes('new')) {
         const linkResult = await this.handleLinkRequest(sessionId, timestamp, message);
-        if (linkResult.success) {
-          // Generate suggestions
-          const suggestions = this.suggestionService.generateSuggestions(
-            this.contextService.getContext(sessionId), 'query'
-          );
-          this.contextService.addToHistory(sessionId, {
-            timestamp, role: 'assistant', message: linkResult.reply, action: 'link', success: true,
-          });
-          return { ...linkResult, suggestions: suggestions.map(s => ({ label: `${s.emoji} ${s.text}`, value: s.action })) };
-        }
+        // Always return link result (success or failure) - don't fall through to AI
+        const suggestions = this.suggestionService.generateSuggestions(
+          this.contextService.getContext(sessionId), 'query'
+        );
+        this.contextService.addToHistory(sessionId, {
+          timestamp, role: 'assistant', message: linkResult.reply, action: 'link', success: linkResult.success,
+        });
+        return { ...linkResult, suggestions: suggestions.map(s => ({ label: `${s.emoji} ${s.text}`, value: s.action })) };
       }
       
       // Step 4: Check for follow-up intent (drill-down, export, count - NOT link)
@@ -424,8 +422,13 @@ export class AIChatHandler {
       // Remove trailing "project" / "projectr" if present
       recordName = recordName.replace(/\s*projects?\s*$/i, '').trim();
       
-      // Skip generic words
-      if (recordName && !['this', 'them', 'it', 'all', 'the', 'that'].includes(recordName)) {
+      // Skip generic/vague words - ask user to specify
+      const GENERIC_WORDS = [
+        'this', 'them', 'it', 'all', 'the', 'that', 'a', 'an', 'my', 'our',
+        'specific', 'certain', 'some', 'particular', 'one',
+        'speific', 'spesific', 'specfic', // common typos
+      ];
+      if (recordName && !GENERIC_WORDS.includes(recordName.toLowerCase())) {
         
         // Check if it's a custom object code/name
         const customObjects = await this.metadataService.getCustomObjects();
@@ -478,8 +481,8 @@ export class AIChatHandler {
   private generateContextLink(context: ConversationContext, timestamp: string): AIResponse {
     if (!context.lastQuery?.objectType) {
       return {
-        success: false,
-        reply: `❓ I need to know what to link to.\n\nTry:\n• "Give me link to all projects"\n• "Give me link to project [name]"\n• "Give me link to custom objects"`,
+        success: true,
+        reply: `❓ Which project do you need a link to?\n\nPlease specify the name, for example:\n• "Give me link to project **idanTest3**"\n• "Give me link to **all** projects"\n• "Give me link to custom objects"`,
         chartData: null,
         timestamp,
       };
